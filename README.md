@@ -101,7 +101,7 @@ Every build runs automatically through **GitHub Actions** as a multi-manager mat
 
 ## 📦 Installation
 
-1. Download the **AnyKernel3** zip for your chosen root manager from the **Releases** page.
+1. Download the **Kernel** zip for your chosen root manager from the **Releases** page.
 2. **Back up** your stock boot,vendor boot image / partition before doing anything.
 3. Flash the zip through a custom recovery (TWRP/OrangeFox)
 4. Reboot the device.
