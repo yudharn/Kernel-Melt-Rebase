@@ -124,7 +124,7 @@ For the full automated build flow (multi-manager matrix), check the workflow use
 
 ## ⚠️ Disclaimer
 
-This is a custom kernel, **not official** from Xiaomi or Pzqqt. Install at your own risk — flashing a kernel always carries some risk of a bootloop. Always back up your stock boot image before trying it.
+This is a custom kernel, **not official** from Xiaomi or Pzqqt. Install at your own risk — flashing a kernel always carries some risk of a bootloop. Always back up your stock boot, vendor boot image before trying it.
 
 Please report issues related to SUSFS, NoMount, or any third-party root manager **in this repository**, not to upstream Melt Kernel or each feature's original project.
 
