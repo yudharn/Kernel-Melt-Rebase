@@ -4,7 +4,7 @@
 
 ### Custom GKI Kernel for the Xiaomi POCO F5 / Redmi Note 12 Turbo
 
-A rebase of **Melt Kernel** ([Pzqqt](https://github.com/Pzqqt)) for the **marble** platform, packing support for five root managers at once alongside modern kernel-level features: SuSFS, Re-Kernel, Baseband-guard, NoMount, and Droidspaces.
+A rebase of **Melt Kernel** ([Pzqqt](https://github.com/Pzqqt)) for the **marble** platform, packing support for four root managers at once alongside modern kernel-level features: SuSFS, Re-Kernel, Baseband-guard, NoMount, and Droidspaces.
 
 ![Device](https://img.shields.io/badge/Device-marble-blue?style=flat-square)
 ![Kernel](https://img.shields.io/badge/Kernel-GKI_5.10-blue?style=flat-square)
@@ -13,10 +13,9 @@ A rebase of **Melt Kernel** ([Pzqqt](https://github.com/Pzqqt)) for the **marble
 ![KernelSU](https://img.shields.io/badge/KernelSU-supported-success?style=flat-square)
 ![KoWSU](https://img.shields.io/badge/KoWSU-supported-success?style=flat-square)
 ![KernelSU--Next](https://img.shields.io/badge/KernelSU--Next-supported-success?style=flat-square)
-![SukiSU_Ultra](https://img.shields.io/badge/SukiSU_Ultra-supported-success?style=flat-square)
 ![ReSukiSU](https://img.shields.io/badge/ReSukiSU-supported-success?style=flat-square)
 ![SUSFS](https://img.shields.io/badge/SUSFS-integrated-success?style=flat-square)
-![ROM](https://img.shields.io/badge/ROM-Multi--ROM-orange?style=flat-square)
+![ROM](https://img.shields.io/badge/ROM-HyperOS%2FColorOS%2FOxygenOS-orange?style=flat-square)
 
 </div>
 
@@ -41,7 +40,7 @@ A rebase of **Melt Kernel** ([Pzqqt](https://github.com/Pzqqt)) for the **marble
 
 **Melt Rebase** is a custom kernel for marble (Xiaomi POCO F5 / Redmi Note 12 Turbo), built on top of the `melt-rebase` branch of **Melt Kernel** by [Pzqqt](https://github.com/Pzqqt) — the most widely known open-source kernel for this device.
 
-Pzqqt deliberately leaves SUSFS integration and third-party root managers out of the official source. Melt Rebase fills that gap: it adds support for five root manager variants at once, kernel-level root hiding via SUSFS, critical-partition protection via Baseband-guard, a filesystem redirection layer via NoMount, Linux container support via Droidspaces, and freeze/thaw event reporting via Re-Kernel — all shipped automatically as ready-to-flash zips.
+Pzqqt deliberately leaves SUSFS integration and third-party root managers out of the official source. Melt Rebase fills that gap: it adds support for four root manager variants at once, kernel-level root hiding via SUSFS, critical-partition protection via Baseband-guard, a filesystem redirection layer via NoMount, Linux container support via Droidspaces, and freeze/thaw event reporting via Re-Kernel — all shipped automatically as ready-to-flash zips.
 
 ---
 
@@ -86,10 +85,9 @@ Kernel-level container namespace support from [ravindu644](https://github.com/ra
 | **KernelSU** (Official) | [tiann/KernelSU](https://github.com/tiann/KernelSU) | The original KernelSU implementation. |
 | **KernelSU-KoWSU** | [deepongi-labs](https://github.com/deepongi-labs/KernelSU-KoWSU) | Personal fork focused on LKM support. |
 | **KernelSU-Next** | [KernelSU-Next team](https://github.com/KernelSU-Next) | Fork with broader kernel compatibility and App Profile. |
-| **SukiSU Ultra** | [SukiSU-Ultra team](https://github.com/SukiSU-Ultra) | KernelSU fork with KPM (KernelPatch Module) support. |
 | **ReSukiSU** | [ReSukiSU team](https://github.com/ReSukiSU) | SukiSU Ultra derivative, focused on stability and multi-manager support. |
 
-All five variants are built in parallel on every release — just grab the zip for whichever root manager you prefer from the **Releases** page.
+All four variants are built in parallel on every release — just grab the zip for whichever root manager you prefer from the **Releases** page.
 
 > ⚠️ Don't install more than one root manager at a time on the same device.
 
@@ -140,7 +138,6 @@ Please report issues related to SUSFS, NoMount, or any third-party root manager 
 - [tiann](https://github.com/tiann) — KernelSU
 - [deepongi-labs](https://github.com/deepongi-labs) — KernelSU-KoWSU
 - [KernelSU-Next team](https://github.com/KernelSU-Next) — KernelSU-Next
-- [SukiSU Ultra team](https://github.com/SukiSU-Ultra) — SukiSU Ultra
 - [ReSukiSU team](https://github.com/ReSukiSU) — ReSukiSU
 
 **Kernel Features**
