@@ -1,0 +1,829 @@
+name: Compile Kernel - POCO F5 (Marble)
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_source:
+        description: "Kernel source repo URL for marble (Melt Kernel). Paste any git URL here to override the default."
+        required: true
+        type: choice
+        default: "https://github.com/yudharn/Pzqqt-Melt-Rebase"
+        options:
+          - https://github.com/yudharn/Pzqqt-Melt-Rebase
+          - https://github.com/Yudharmdn/Guxin12-Melt-Rebase
+          - https://github.com/Pzqqt/android_kernel_xiaomi_marble
+
+      kernel_branch:
+        description: "Branch on kernel_source above"
+        required: true
+        type: choice
+        default: "melt-rebase"
+        options:
+          - melt-rebase
+          - melt-Guxin12-A
+          - Yudharn-melt-rebase
+
+      manager_official_kernelsu:
+        description: "Build Official-KernelSU"
+        required: true
+        type: boolean
+        default: true
+
+      manager_kernelsu_next:
+        description: "Build KernelSU-Next"
+        required: true
+        type: boolean
+        default: true
+
+      manager_kowsu:
+        description: "Build KowSU"
+        required: true
+        type: boolean
+        default: true
+
+      manager_resukisu:
+        description: "Build ReSukiSU"
+        required: true
+        type: boolean
+        default: true
+
+      resukisu_commit:
+        description: "Custom ReSukiSU commit or tag. Leave empty to use the latest commit on main."
+        required: false
+        type: string
+        default: ""
+
+      manager_sukisu_ultra:
+        description: "Build SukiSUUltra"
+        required: true
+        type: boolean
+        default: true
+
+      custom_name:
+        description: "kernel"
+        required: false
+        type: choice
+        default: Melt-Rebase
+        options:
+          - Melt-Rebase
+          
+      susfs:
+        description: "Add susfs support"
+        required: true
+        type: boolean
+        default: true
+
+      susfs_commit:
+        description: "Custom susfs4ksu commit, Leave empty to use the latest commit on gki-android12-5.10."
+        required: false
+        type: string
+        default: ""
+
+      BBG:
+        description: "Add BBG support"
+        required: true
+        type: boolean
+        default: true
+
+      rekernel_netlink:
+        description: "Add Re-Kernel support (Netlink)"
+        required: true
+        type: boolean
+        default: true
+
+      rekernel_ebpf:
+        description: "Add Re-Kernel support (eBPF)"
+        required: true
+        type: boolean
+        default: true
+
+      droidspaces:
+        description: "Add DroidSpaces support"
+        required: true
+        type: boolean
+        default: true
+
+      nomount:
+        description: "Add NoMount support"
+        required: true
+        type: boolean
+        default: true
+
+      ccache_update:
+        description: "Refresh ccache"
+        required: true
+        type: boolean
+        default: true
+
+
+jobs:
+  Determine_Matrix:
+    name: Determine which managers to build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Build matrix JSON from checked managers
+        id: set-matrix
+        run: |
+          MANAGERS=()
+          [[ "${{ inputs.manager_official_kernelsu }}" == true ]] && MANAGERS+=("Official-KernelSU")
+          [[ "${{ inputs.manager_kernelsu_next }}" == true ]] && MANAGERS+=("KernelSU-Next")
+          [[ "${{ inputs.manager_kowsu }}" == true ]] && MANAGERS+=("KowSU")
+          [[ "${{ inputs.manager_resukisu }}" == true ]] && MANAGERS+=("ReSukiSU")
+          [[ "${{ inputs.manager_sukisu_ultra }}" == true ]] && MANAGERS+=("SukiSUUltra")
+
+          if [[ ${#MANAGERS[@]} -eq 0 ]]; then
+            echo "::error::No manager checked — tick at least one manager_* checkbox before running this workflow."
+            exit 1
+          fi
+
+          MATRIX_JSON=$(printf '%s\n' "${MANAGERS[@]}" | jq -R . | jq -sc .)
+          echo "==> Managers selected for this run: ${MANAGERS[*]}"
+          echo "matrix=${MATRIX_JSON}" >> "$GITHUB_OUTPUT"
+
+  Build_Kernel_Marble:
+    needs: Determine_Matrix
+    name: Build Kernel (${{ matrix.ksu_type }})
+    strategy:
+      fail-fast: false
+      matrix:
+        ksu_type: ${{ fromJSON(needs.Determine_Matrix.outputs.matrix) }}
+    env:
+        GH_TOKEN: ${{ github.token }}
+        SOC: marble
+        CCACHE_KEY: ccache-ecsv3-marble-sm7475
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+      checks: read
+    steps:
+      - name: Free up disk space
+        run: |
+          echo "==> Disk space before cleanup:"
+          df -h /
+
+          sudo rm -rf /usr/local/lib/android &
+          sudo rm -rf /usr/share/dotnet &
+          sudo rm -rf /opt/ghc /usr/local/.ghcup &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          sudo rm -rf /opt/az &
+          sudo rm -rf /usr/share/swift &
+          wait
+
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+
+          echo "==> Disk space after cleanup:"
+          df -h /
+
+      - uses: actions/checkout@v7
+
+      - name: Setup SWAP
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 16
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+          bc bison flex \
+          libssl-dev \
+          libelf-dev \
+          libdw-dev \
+          build-essential \
+          lz4 \
+          git \
+          python3 \
+          curl \
+          dwarves \
+          cpio \
+          ccache \
+          zstd \
+          unzip \
+          p7zip-full \
+          gcc-aarch64-linux-gnu
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b ${{ inputs.kernel_branch }} ${{ inputs.kernel_source }} ${SOC}
+          cd ${SOC}
+          KERNEL_COMMIT=$(git rev-parse --short HEAD)
+          echo "KERNEL_COMMIT=${KERNEL_COMMIT}" >> $GITHUB_ENV
+          KERNEL_SOURCE_WEB="${{ inputs.kernel_source }}"
+          KERNEL_SOURCE_WEB="${KERNEL_SOURCE_WEB%.git}"
+          KERNEL_COMMIT_URL="${KERNEL_SOURCE_WEB}/commit/${KERNEL_COMMIT}"
+          echo "KERNEL_COMMIT_URL=${KERNEL_COMMIT_URL}" >> $GITHUB_ENV
+          echo "==> Kernel source: using latest commit ${KERNEL_COMMIT} on branch ${{ inputs.kernel_branch }} (${KERNEL_COMMIT_URL})"
+
+          KVER=$(grep -m1 '^VERSION = ' Makefile | awk '{print $3}')
+          KPATCHLEVEL=$(grep -m1 '^PATCHLEVEL = ' Makefile | awk '{print $3}')
+          KSUBLEVEL=$(grep -m1 '^SUBLEVEL = ' Makefile | awk '{print $3}')
+          if [[ -n "$KVER" && -n "$KPATCHLEVEL" && -n "$KSUBLEVEL" ]]; then
+            KERNEL_BASE_VERSION="${KVER}.${KPATCHLEVEL}.${KSUBLEVEL}"
+          else
+            KERNEL_BASE_VERSION="unknown"
+          fi
+          echo "KERNEL_BASE_VERSION=${KERNEL_BASE_VERSION}" >> $GITHUB_ENV
+          echo "==> Detected kernel base version: ${KERNEL_BASE_VERSION}"
+          cd ..
+
+      - name: Download Latest Clang/LLVM Toolchain
+        id: clang
+        run: |
+          set -euo pipefail
+
+          mkdir -p toolchains
+          cd toolchains
+
+          echo "==> Querying latest stable LLVM release..."
+
+          LLVM_JSON=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/llvm/llvm-project/releases/latest)
+
+          LLVM_TAG=$(echo "$LLVM_JSON" | jq -r '.tag_name')
+
+          CLANG_URL=$(echo "$LLVM_JSON" | jq -r '
+            .assets[]
+            | select(.name | test("Linux-X64\\.tar\\.xz$"))
+            | .browser_download_url
+          ' | head -n 1)
+
+          if [[ -z "$LLVM_TAG" || "$LLVM_TAG" == "null" ]]; then
+            echo "::error::Failed to determine latest LLVM release tag."
+            exit 1
+          fi
+
+          if [[ -z "$CLANG_URL" || "$CLANG_URL" == "null" ]]; then
+            echo "::error::Could not find Linux-X64.tar.xz asset in LLVM release ${LLVM_TAG}."
+            echo "Available assets:"
+            echo "$LLVM_JSON" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          CLANG_ARCHIVE=$(basename "$CLANG_URL")
+
+          echo "LLVM_TAG=${LLVM_TAG}" >> "$GITHUB_ENV"
+          echo "CLANG_URL=${CLANG_URL}" >> "$GITHUB_ENV"
+          echo "CLANG_ARCHIVE=${CLANG_ARCHIVE}" >> "$GITHUB_ENV"
+
+          echo "==> Latest LLVM release: ${LLVM_TAG}"
+          echo "==> Download URL: ${CLANG_URL}"
+
+          wget -q "$CLANG_URL" -O "$CLANG_ARCHIVE"
+          mkdir llvm-toolchain
+          tar -xJf "$CLANG_ARCHIVE" -C llvm-toolchain --strip-components=1 >/dev/null 2>&1
+          rm -f "$CLANG_ARCHIVE"
+
+          echo "==> Downloaded Clang version:"
+          llvm-toolchain/bin/clang --version
+
+      - name: Configure ccache dir and key
+        run: |
+          echo "CCACHE_DIR=$HOME/.ccache_marble" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=3G" >> $GITHUB_ENV
+          if [[ "${{ inputs.droidspaces }}" == true ]]; then
+            CCACHE_REAL_KEY=${CCACHE_KEY}-Droidspaces
+          else
+            CCACHE_REAL_KEY=${CCACHE_KEY}-none
+          fi
+          echo "CCACHE_REAL_KEY=$CCACHE_REAL_KEY" >> $GITHUB_ENV
+
+      - name: Purge old ccache (on refresh)
+        if: ${{ inputs.ccache_update }}
+        continue-on-error: true
+        run: |
+          echo "Deleting old repo ccache to force a fresh save..."
+          gh cache delete "${CCACHE_REAL_KEY}-${{ runner.os }}-${{ inputs.kernel_branch }}-${{ matrix.ksu_type }}" -R ${{ github.repository }} || echo "No old ccache to delete"
+
+      - name: Restore ccache
+        if: ${{ !inputs.ccache_update }}
+        uses: actions/cache/restore@v6
+        id: ccache-restore
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}-${{ matrix.ksu_type }}
+          restore-keys: |
+            ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}-
+            ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-
+            ${{ env.CCACHE_REAL_KEY }}-
+
+      - name: Compile Kernel
+        run: |
+          CLANG_ROOT="${GITHUB_WORKSPACE}/toolchains/llvm-toolchain/bin"
+          export PATH="${CLANG_ROOT}:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export LLVM=1
+          export LLVM_IAS=1
+          export CC="${CLANG_ROOT}/clang"
+          export CXX="${CLANG_ROOT}/clang++"
+          export HOSTCC="${CLANG_ROOT}/clang"
+          export HOSTCXX="${CLANG_ROOT}/clang++"
+          export LD="${CLANG_ROOT}/ld.lld"
+          export AR="${CLANG_ROOT}/llvm-ar"
+          export NM="${CLANG_ROOT}/llvm-nm"
+          export OBJCOPY="${CLANG_ROOT}/llvm-objcopy"
+          export OBJDUMP="${CLANG_ROOT}/llvm-objdump"
+          export STRIP="${CLANG_ROOT}/llvm-strip"
+          export KBUILD_BUILD_USER="Rebuild By"
+          export KBUILD_BUILD_HOST="Yudharn"
+
+          CLANG_VERSION=$("${CC}" --version | head -n1)
+          echo "CLANG_VERSION=${CLANG_VERSION}" >> $GITHUB_ENV
+          echo "==> Using Clang/LLVM toolchain: ${CLANG_VERSION} (${LLVM_TAG})"
+          echo "==> LLVM archive: ${CLANG_ARCHIVE}"
+          echo "==> LLVM URL: ${CLANG_URL}"
+
+          export CCACHE_COMPILERCHECK="none"
+          export CCACHE_BASEDIR="${GITHUB_WORKSPACE}"
+          export CCACHE_NOHASHDIR="true"
+          export CCACHE_NOHARDLINK="true"
+          mkdir -p "${CCACHE_DIR}"
+          echo "sloppiness = file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,file_macro,time_macros" >> "${CCACHE_DIR}/ccache.conf"
+          ccache -M "${CCACHE_MAXSIZE}"
+          ccache -o compression=true
+          echo "ccache status before build:"
+          ccache -s
+
+          if [[ -n "${{ inputs.custom_name }}" ]]; then
+            KERNEL_NAME="${{ inputs.custom_name }}"
+          else
+            KERNEL_NAME="${{ matrix.ksu_type }}"
+          fi
+
+          echo "KERNEL_NAME=${KERNEL_NAME}" >> $GITHUB_ENV
+
+          cd ${SOC}
+
+          KSU_DIRS_BEFORE=$(ls -d */ 2>/dev/null | sort || true)
+
+          case "${{ matrix.ksu_type }}" in
+
+            "None")
+              ;;
+
+            "Official-KernelSU")
+              curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+              ;;
+
+            "KowSU")
+               curl -LSs "https://raw.githubusercontent.com/KOWX712/KernelSU/main/kernel/setup.sh" | bash -s master
+              ;;
+
+            "KernelSU-Next")
+              if [[ "${{ inputs.susfs }}" == true ]]; then
+                curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/refs/heads/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
+              else
+                curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
+              fi
+              ;;
+
+            "ReSukiSU")
+              if [[ -n "${{ inputs.resukisu_commit }}" ]]; then
+                echo "==> ReSukiSU: using custom commit/tag ${{ inputs.resukisu_commit }}"
+                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s "${{ inputs.resukisu_commit }}"
+              else
+                echo "==> ReSukiSU: using latest commit on main"
+                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+              fi
+              ;;
+
+            "SukiSUUltra")
+              curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+              ;;              
+          esac
+
+          if [[ "${{ matrix.ksu_type }}" != "None" ]]; then
+            KSU_DIRS_AFTER=$(ls -d */ 2>/dev/null | sort || true)
+            KSU_DIR=$(comm -13 <(echo "$KSU_DIRS_BEFORE") <(echo "$KSU_DIRS_AFTER") | head -n1 | sed 's:/$::')
+
+            if [[ -n "$KSU_DIR" && -d "${KSU_DIR}/.git" ]]; then
+              KSU_MANAGER_VERSION=$(cd "$KSU_DIR" && git describe --tags --always 2>/dev/null || echo "unknown")
+              KSU_MANAGER_COMMIT=$(cd "$KSU_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "")
+              KSU_MANAGER_REPO_URL=$(cd "$KSU_DIR" && git remote get-url origin 2>/dev/null | sed 's/\.git$//')
+              KSU_MANAGER_COMMIT_URL="${KSU_MANAGER_REPO_URL}/commit/${KSU_MANAGER_COMMIT}"
+              echo "==> ${{ matrix.ksu_type }}: detected source dir '${KSU_DIR}', version ${KSU_MANAGER_VERSION} (${KSU_MANAGER_COMMIT}) - ${KSU_MANAGER_COMMIT_URL}"
+            else
+              echo "==> Could not auto-detect the ${{ matrix.ksu_type }} source dir; KSU Manager version will show as unknown."
+              KSU_MANAGER_VERSION="unknown"
+              KSU_MANAGER_COMMIT=""
+              KSU_MANAGER_COMMIT_URL=""
+            fi
+
+            echo "KSU_MANAGER_VERSION=${KSU_MANAGER_VERSION}" >> $GITHUB_ENV
+            echo "KSU_MANAGER_COMMIT=${KSU_MANAGER_COMMIT}" >> $GITHUB_ENV
+            echo "KSU_MANAGER_COMMIT_URL=${KSU_MANAGER_COMMIT_URL}" >> $GITHUB_ENV
+          fi
+
+          if [[ "${{ inputs.susfs }}" == true ]]; then
+            if [[ -n "${{ inputs.susfs_commit }}" ]]; then
+              git clone -b gki-android12-5.10 https://gitlab.com/simonpunk/susfs4ksu.git susfs
+              cd susfs
+              git checkout "${{ inputs.susfs_commit }}"
+              SUSFS_COMMIT=$(git rev-parse --short HEAD)
+              echo "SUSFS_COMMIT=${SUSFS_COMMIT}" >> $GITHUB_ENV
+              SUSFS_COMMIT_URL="https://gitlab.com/simonpunk/susfs4ksu/-/commit/${SUSFS_COMMIT}"
+              echo "SUSFS_COMMIT_URL=${SUSFS_COMMIT_URL}" >> $GITHUB_ENV
+              echo "==> SUSFS: using custom commit ${SUSFS_COMMIT} on branch gki-android12-5.10 (${SUSFS_COMMIT_URL})"
+            else
+              git clone --depth=1 -b gki-android12-5.10 https://gitlab.com/simonpunk/susfs4ksu.git susfs
+              cd susfs
+              SUSFS_COMMIT=$(git rev-parse --short HEAD)
+              echo "SUSFS_COMMIT=${SUSFS_COMMIT}" >> $GITHUB_ENV
+              SUSFS_COMMIT_URL="https://gitlab.com/simonpunk/susfs4ksu/-/commit/${SUSFS_COMMIT}"
+              echo "SUSFS_COMMIT_URL=${SUSFS_COMMIT_URL}" >> $GITHUB_ENV
+              echo "==> SUSFS: using latest commit ${SUSFS_COMMIT} on branch gki-android12-5.10 (${SUSFS_COMMIT_URL})"
+            fi
+            cp ./kernel_patches/50_add_susfs_in_gki-android12-5.10.patch ..
+            cp ./kernel_patches/fs/* ../fs/
+            cp ./kernel_patches/include/linux/* ../include/linux/
+            cd ..
+            patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
+            echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> arch/arm64/configs/marble_defconfig
+          fi
+
+          if [[ "${{ inputs.nomount }}" == true ]]; then
+            echo "::group::NoMount integration"
+            if [[ "${{ inputs.susfs }}" == true ]]; then
+              echo "::warning::susfs and nomount are both enabled - susfs's SUS_KSTAT patches fs/stat.c, which nomount's own VFS hooks may also touch. If anything below fails, try disabling one to isolate it."
+            fi
+
+            curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/master/kernel/setup.sh | bash -s master
+
+            if [[ -d "NoMount/.git" ]]; then
+              NOMOUNT_COMMIT=$(cd NoMount && git rev-parse --short HEAD 2>/dev/null || echo "")
+              NOMOUNT_REPO_URL=$(cd NoMount && git remote get-url origin 2>/dev/null | sed 's/\.git$//')
+              NOMOUNT_COMMIT_URL="${NOMOUNT_REPO_URL}/commit/${NOMOUNT_COMMIT}"
+              echo "NOMOUNT_COMMIT=${NOMOUNT_COMMIT}" >> $GITHUB_ENV
+              echo "NOMOUNT_COMMIT_URL=${NOMOUNT_COMMIT_URL}" >> $GITHUB_ENV
+              echo "==> NoMount: using commit ${NOMOUNT_COMMIT} on branch dev (${NOMOUNT_COMMIT_URL})"
+            else
+              echo "::warning::Could not find NoMount/.git after setup.sh ran - NoMount commit will show as unknown in the release notes."
+              echo "NOMOUNT_COMMIT=" >> $GITHUB_ENV
+              echo "NOMOUNT_COMMIT_URL=" >> $GITHUB_ENV
+            fi
+
+            echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/marble_defconfig
+            echo "::endgroup::"
+          fi
+
+          if [[ "${{ inputs.BBG }}" == true ]]; then
+            wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
+            echo "CONFIG_BBG=y" >> arch/arm64/configs/marble_defconfig
+            sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/selinux/selinux,baseband_guard/ } }' security/Kconfig
+          fi
+
+          if [[ "${{ inputs.rekernel_netlink }}" == true ]]; then
+            git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git rekernel-src
+            bash rekernel-src/Integrate/patches.sh
+            echo "CONFIG_REKERNEL=y" >> arch/arm64/configs/marble_defconfig
+            echo "CONFIG_REKERNEL_NETWORK=y" >> arch/arm64/configs/marble_defconfig
+          fi
+
+          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
+            echo "==> Re-Kernel eBPF selected; will build after the kernel Image is ready."
+          fi
+
+          if [[ "${{ inputs.droidspaces }}" == true ]]; then
+            echo "::group::DroidSpaces integration"
+            apply_droidspaces_patch() {
+              local patch_file="$1" label="$2"
+              if patch -p1 -N --fuzz=0 --dry-run --silent < "$patch_file" > /dev/null 2>&1; then
+                patch -p1 -N --fuzz=0 < "$patch_file"
+                echo "==> DroidSpaces ${label}: applied."
+                return 0
+              elif patch -p1 -R --fuzz=0 --dry-run --silent < "$patch_file" > /dev/null 2>&1; then
+                echo "==> DroidSpaces ${label}: already present natively on this branch (confirmed via reverse-check) - not re-applying."
+                return 0
+              else
+                echo "::warning::DroidSpaces ${label} doesn't apply cleanly in either direction - can't confirm the kABI fix is actually present on this tree."
+                return 1
+              fi
+            }
+
+            DROIDSPACES_SAFE=true
+
+            curl -sLo patch-for-below-6.12.patch https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/refs/heads/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch
+            apply_droidspaces_patch patch-for-below-6.12.patch "patch 001 (sysvipc kabi fix)" || DROIDSPACES_SAFE=false
+
+            curl -sLo patch-for-5.10-or-lower.patch https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/refs/heads/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/002.5.10_or_lower_use_android_abi_padding_for_posix_mqueue.patch
+            apply_droidspaces_patch patch-for-5.10-or-lower.patch "patch 002 (posix_mqueue abi padding)" || DROIDSPACES_SAFE=false
+
+            if [[ "$DROIDSPACES_SAFE" == true ]]; then
+              if [[ -f "${GITHUB_WORKSPACE}/configs/droidspaces-gki.config" ]]; then
+                cat "${GITHUB_WORKSPACE}/configs/droidspaces-gki.config" >> arch/arm64/configs/marble_defconfig
+                echo "==> DroidSpaces: config fragment appended to marble_defconfig."
+              else
+                echo "::warning::configs/droidspaces-gki.config not found in this repo's root - DroidSpaces config fragment not applied (nothing to enable it with). Add that file to the repo (see ravindu644/Droidspaces-OSS 'Configuring GKI Kernels' docs) to actually turn DroidSpaces on."
+              fi
+            else
+              echo "::warning::Skipping the DroidSpaces config fragment entirely this run - at least one required kABI patch could not be confirmed. Enabling CONFIG_SYSVIPC/CONFIG_IPC_NS/CONFIG_POSIX_MQUEUE without it risks a bootloop per DroidSpaces-OSS's own docs, so this run won't have working DroidSpaces support."
+            fi
+            echo "::endgroup::"
+          fi
+
+          echo "-${KERNEL_NAME}-${{ github.actor }}" > .scmversion
+
+          echo "CONFIG_TMPFS_XATTR=y" >> arch/arm64/configs/marble_defconfig
+
+          echo "CONFIG_BPF_SYSCALL=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_BPF_JIT=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_CGROUP_BPF=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_BPF_EVENTS=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_UPROBE_EVENTS=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_NET_CLS_ACT=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_NET_CLS_BPF=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_NET_ACT_BPF=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_NET_SCH_INGRESS=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_DEBUG_INFO=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_DEBUG_INFO_BTF=y" >> arch/arm64/configs/marble_defconfig
+          echo "CONFIG_DEBUG_INFO_BTF_MODULES=y" >> arch/arm64/configs/marble_defconfig
+
+          make O=out marble_defconfig
+
+          make -j$(nproc) O=out CC="ccache ${CLANG_ROOT}/clang" HOSTCC="ccache ${CLANG_ROOT}/clang" Image
+
+          echo "ccache status after build:"
+          ccache -s
+
+      - name: Save ccache
+        if: ${{ always() && steps.ccache-restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ env.CCACHE_REAL_KEY }}-${{ runner.os }}-${{ inputs.kernel_branch }}-${{ matrix.ksu_type }}
+
+      - name: Build Re-Kernel (eBPF)
+        if: ${{ inputs.rekernel_ebpf }}
+        run: |
+          set -e
+
+          curl -sSL -o bpftool.tar.gz \
+            https://github.com/libbpf/bpftool/releases/download/v7.7.0/bpftool-v7.7.0-amd64.tar.gz
+          mkdir -p bpftool-bin
+          tar -xzf bpftool.tar.gz -C bpftool-bin
+          chmod +x bpftool-bin/bpftool
+
+          wget -q https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+          unzip -q android-ndk-r27d-linux.zip
+          rm -f android-ndk-r27d-linux.zip
+
+          git clone --depth=1 --filter=blob:none --sparse \
+            https://github.com/Sakion-Team/Re-Kernel.git rekernel-ebpf-src
+          cd rekernel-ebpf-src
+          git sparse-checkout set eBPF-Source
+          cd eBPF-Source
+
+          "${GITHUB_WORKSPACE}/bpftool-bin/bpftool" btf dump file \
+            "${GITHUB_WORKSPACE}/${SOC}/out/vmlinux" format c > include/vmlinux.h
+
+          NDK_PATH="${GITHUB_WORKSPACE}/android-ndk-r27d"
+
+          if ! make ARCH=aarch64 API=35 NDK_PATH="${NDK_PATH}"; then
+            echo "::warning::Re-Kernel eBPF build failed with plain vmlinux.h — retrying with EXTRA_BPF_CFLAGS=-DRK_DEFINE_BINDER_TYPES (binder structs may be missing from our BTF dump)."
+            make clean
+            make ARCH=aarch64 API=35 NDK_PATH="${NDK_PATH}" EXTRA_BPF_CFLAGS=-DRK_DEFINE_BINDER_TYPES
+          fi
+
+          cp out/rekernel.bpf.o "${GITHUB_WORKSPACE}/rekernel.bpf.o"
+          cp out/rekerneld_aarch64 "${GITHUB_WORKSPACE}/rekerneld_aarch64"
+
+      - name: Make AnyKernel3
+        run: |
+          ZIP_NAME="${KERNEL_BASE_VERSION}_${KERNEL_NAME}_${{ matrix.ksu_type }}"
+
+          if [[ "${{ inputs.susfs }}" == true ]]; then
+            ZIP_NAME="${ZIP_NAME}_SuSFS"
+          fi
+
+          if [[ "${{ inputs.nomount }}" == true ]]; then
+            ZIP_NAME="${ZIP_NAME}_NoMount"
+          fi
+
+          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
+            ZIP_NAME="${ZIP_NAME}_eBPF"
+          fi
+
+          ZIP_NAME="${ZIP_NAME}_$(date -u +"%Y%m%d")"
+          git clone --depth=1 -b Anykernel3 https://github.com/yudharn/AnyKernel3 AnyKernel3
+
+          (cd ${SOC}/out/arch/arm64/boot && 7z a "${GITHUB_WORKSPACE}/AnyKernel3/Image.7z" Image)
+          cp ${SOC}/out/arch/arm64/boot/Image ./Image
+
+          IMAGE_SHA1=$(sha1sum ${SOC}/out/arch/arm64/boot/Image | awk '{print $1}')
+          sed -i "s/^SHA1_STOCK=\"0\"/SHA1_STOCK=\"${IMAGE_SHA1}\"/" AnyKernel3/anykernel.sh
+          cd AnyKernel3
+
+          zip -r9 ../"${ZIP_NAME}.zip" * -x .git
+
+          echo "ZIP_NAME=${ZIP_NAME}.zip" >> $GITHUB_ENV
+
+      - name: Write build metadata
+        run: |
+          jq -n \
+            --arg ksu_type "${{ matrix.ksu_type }}" \
+            --arg kernel_name "${KERNEL_NAME}" \
+            --arg zip_name "${ZIP_NAME}" \
+            --arg ksu_manager_version "${KSU_MANAGER_VERSION:-unknown}" \
+            --arg ksu_manager_commit "${KSU_MANAGER_COMMIT:-}" \
+            --arg ksu_manager_commit_url "${KSU_MANAGER_COMMIT_URL:-}" \
+            --arg kernel_commit "${KERNEL_COMMIT}" \
+            --arg kernel_commit_url "${KERNEL_COMMIT_URL}" \
+            --arg kernel_base_version "${KERNEL_BASE_VERSION:-unknown}" \
+            --arg clang_version "${CLANG_VERSION}" \
+            --arg susfs_commit "${SUSFS_COMMIT:-}" \
+            --arg susfs_commit_url "${SUSFS_COMMIT_URL:-}" \
+            --arg nomount_commit "${NOMOUNT_COMMIT:-}" \
+            --arg nomount_commit_url "${NOMOUNT_COMMIT_URL:-}" \
+            '{ksu_type:$ksu_type,kernel_name:$kernel_name,zip_name:$zip_name,ksu_manager_version:$ksu_manager_version,ksu_manager_commit:$ksu_manager_commit,ksu_manager_commit_url:$ksu_manager_commit_url,kernel_commit:$kernel_commit,kernel_commit_url:$kernel_commit_url,kernel_base_version:$kernel_base_version,clang_version:$clang_version,susfs_commit:$susfs_commit,susfs_commit_url:$susfs_commit_url,nomount_commit:$nomount_commit,nomount_commit_url:$nomount_commit_url}' \
+            > "${GITHUB_WORKSPACE}/metadata.json"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-${{ matrix.ksu_type }}
+          path: |
+            ${{ env.ZIP_NAME }}
+            metadata.json
+            rekernel.bpf.o
+            rekerneld_aarch64
+          if-no-files-found: ignore
+          retention-days: 1
+
+  Create_Release:
+    name: Create combined GitHub Release
+    needs: Build_Kernel_Marble
+
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: build-*
+
+      - name: Create combined release
+        run: |
+          set -e
+          mkdir -p artifacts
+          cd artifacts
+
+          echo "==> Downloaded artifact layout:"
+          find . -maxdepth 3 -type f | sort
+
+          ASSETS=()
+          NOTES_ROWS=""
+          EBPF_DONE=false
+          FIRST=true
+          FOUND_ANY=false
+
+          while IFS= read -r META; do
+            FOUND_ANY=true
+            dir="$(dirname "$META")/"
+
+            KSU_TYPE=$(jq -r '.ksu_type' "$META")
+            ZIP_NAME=$(jq -r '.zip_name' "$META")
+            KSU_MANAGER_VERSION=$(jq -r '.ksu_manager_version' "$META")
+            KSU_MANAGER_COMMIT=$(jq -r '.ksu_manager_commit' "$META")
+            KSU_MANAGER_COMMIT_URL=$(jq -r '.ksu_manager_commit_url' "$META")
+
+            if $FIRST; then
+              KERNEL_NAME=$(jq -r '.kernel_name' "$META")
+              KERNEL_COMMIT=$(jq -r '.kernel_commit' "$META")
+              KERNEL_COMMIT_URL=$(jq -r '.kernel_commit_url' "$META")
+              KERNEL_BASE_VERSION=$(jq -r '.kernel_base_version' "$META")
+              CLANG_VERSION=$(jq -r '.clang_version' "$META")
+              SUSFS_COMMIT=$(jq -r '.susfs_commit' "$META")
+              SUSFS_COMMIT_URL=$(jq -r '.susfs_commit_url' "$META")
+              NOMOUNT_COMMIT=$(jq -r '.nomount_commit' "$META")
+              NOMOUNT_COMMIT_URL=$(jq -r '.nomount_commit_url' "$META")
+              FIRST=false
+            fi
+
+            ASSETS+=("${dir}${ZIP_NAME}")
+
+            if [[ -n "$KSU_MANAGER_COMMIT" ]]; then
+              ksu_row_version="${KSU_MANAGER_VERSION}@[${KSU_MANAGER_COMMIT}](${KSU_MANAGER_COMMIT_URL})"
+            else
+              ksu_row_version="${KSU_MANAGER_VERSION}"
+            fi
+            NOTES_ROWS="${NOTES_ROWS}
+           | ${KSU_TYPE} | ${ksu_row_version} | ${ZIP_NAME} |"
+
+            if [[ "$EBPF_DONE" == false && -f "${dir}rekernel.bpf.o" ]]; then
+              ASSETS+=("${dir}rekernel.bpf.o" "${dir}rekerneld_aarch64")
+              EBPF_DONE=true
+            fi
+          done < <(find . -type f -name 'metadata.json' | sort)
+
+          if [[ "$FOUND_ANY" == false ]]; then
+            echo "::warning::No metadata.json found anywhere under artifacts/, skipping"
+          fi
+
+          if [[ ${#ASSETS[@]} -eq 0 ]]; then
+            echo "::error::No successful builds found in any matrix leg — skipping release creation."
+            exit 1
+          fi
+
+          if [[ "${{ inputs.susfs }}" == true ]]; then
+            susfs_checkbox="Supported (susfs4ksu@[${SUSFS_COMMIT}](${SUSFS_COMMIT_URL}))"
+          else
+            susfs_checkbox="Unsupported"
+          fi
+
+          if [[ "${{ inputs.BBG }}" == true ]]; then
+            bbg_checkbox="Supported"
+          else
+            bbg_checkbox="Unsupported"
+          fi
+
+          if [[ "${{ inputs.rekernel_netlink }}" == true ]]; then
+            rekernel_netlink_checkbox="Supported"
+          else
+            rekernel_netlink_checkbox="Unsupported"
+          fi
+
+          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
+            rekernel_ebpf_checkbox="Supported (daemon+prog attached as release assets)"
+          else
+            rekernel_ebpf_checkbox="Unsupported"
+          fi
+
+          if [[ "${{ inputs.droidspaces }}" == true ]]; then
+            droidspaces_checkbox="Supported"
+          else
+            droidspaces_checkbox="Unsupported"
+          fi
+
+          if [[ "${{ inputs.nomount }}" == true ]]; then
+            if [[ -n "$NOMOUNT_COMMIT" ]]; then
+              nomount_checkbox="Supported (nomount@[${NOMOUNT_COMMIT}](${NOMOUNT_COMMIT_URL}))"
+            else
+              nomount_checkbox="Supported"
+            fi
+          else
+            nomount_checkbox="Unsupported"
+          fi
+
+          BUILD_TIME=$(date -u +"%Y%m%d_%H%M")
+          REL_NAME="${KERNEL_BASE_VERSION}-${KERNEL_NAME}-${BUILD_TIME}"
+
+          gh release create "$REL_NAME" -R ${{ github.repository }} --title "$REL_NAME" --notes "# Kernel Melt Rebase for POCO F5 (marble)
+
+           | | |
+           |:---|:---|
+           | 📱 Device | POCO F5 (marble) • Redmi Note 12 Turbo (marble) |
+           | 🟠 ROM Support | HyperOS,ColorOS,OxygenOS |
+           | 🖥️ Kernel Name | ${KERNEL_NAME}
+           | 🧰 Kernel Base | ${KERNEL_BASE_VERSION} |
+           | 🛠️ Build Scope | ZIP |
+           | 📦 Source | ${{ inputs.kernel_source }} |
+           | 🔗 Kernel branch | ${{ inputs.kernel_branch }}@[${KERNEL_COMMIT}](${KERNEL_COMMIT_URL})
+           | 🔧 SuSFS Version | ${susfs_checkbox} 
+           | ⚙️ BBG Patch | ${bbg_checkbox} 
+           | ⚙️ Re-Kernel (Netlink) | ${rekernel_netlink_checkbox}
+           | ⚙️ Re-Kernel (eBPF) | ${rekernel_ebpf_checkbox}
+           | 🧩 DroidSpaces | ${droidspaces_checkbox}
+           | 🗂️ NoMount | ${nomount_checkbox}
+           | 🧩 eBPF | Enabled (BTF/CO-RE, kprobe+uprobe, cgroup+tc hooks) |
+           | 🔨 Compiler | ${CLANG_VERSION} |
+
+           ---
+
+           ### 💻 KSU Managers in this build
+
+           | Manager | Version | Zip |
+           |:---|:---|:---|${NOTES_ROWS}
+
+           ---
+          " "${ASSETS[@]}"
+
+
+
+
+
+
+
+          
