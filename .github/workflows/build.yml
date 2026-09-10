@@ -616,10 +616,6 @@ jobs:
             ZIP_NAME="${ZIP_NAME}_NoMount"
           fi
 
-          if [[ "${{ inputs.rekernel_ebpf }}" == true ]]; then
-            ZIP_NAME="${ZIP_NAME}_eBPF"
-          fi
-
           ZIP_NAME="${ZIP_NAME}_$(date -u +"%Y%m%d")"
           git clone --depth=1 -b Anykernel3 https://github.com/yudharn/AnyKernel3 AnyKernel3
 
