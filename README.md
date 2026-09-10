@@ -1,6 +1,6 @@
 <div align="center">
 
-# Melt Rebase (marble)
+# Kernel Melt Rebase
 
 ### Custom GKI Kernel for the Xiaomi POCO F5 / Redmi Note 12 Turbo
 
