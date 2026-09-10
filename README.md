@@ -104,11 +104,8 @@ Every build runs automatically through **GitHub Actions** as a multi-manager mat
 ## 📦 Installation
 
 1. Download the **AnyKernel3** zip for your chosen root manager from the **Releases** page.
-2. **Back up** your stock boot image / partition before doing anything.
-3. Flash the zip through a custom recovery (TWRP/OrangeFox), or extract `boot.img` and boot it temporarily via:
-   ```bash
-   fastboot flash boot boot.img
-   ```
+2. **Back up** your stock boot,vendor boot image / partition before doing anything.
+3. Flash the zip through a custom recovery (TWRP/OrangeFox)
 4. Reboot the device.
 5. Install the matching manager app (KernelSU Manager, KernelSU-Next Manager, etc.), then finish the root setup.
 
