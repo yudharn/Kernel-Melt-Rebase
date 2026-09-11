@@ -51,7 +51,7 @@ on:
         description: "Custom ReSukiSU commit or tag. Leave empty to use the latest commit on main."
         required: false
         type: string
-        default: "f1dd81dc96d7f3f6691e6ac8b50fba9ae8a2f17c"
+        default: ""
 
       manager_sukisu_ultra:
         description: "Build SukiSUUltra"
@@ -83,7 +83,7 @@ on:
         description: "Custom susfs4ksu commit, Leave empty to use the latest commit on gki-android12-5.10."
         required: false
         type: string
-        default: "721c76e73b1154baddce1b94e9693e56a4ab44f3"
+        default: ""
 
       ccache_update:
         description: "Refresh ccache"
