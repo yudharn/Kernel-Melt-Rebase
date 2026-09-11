@@ -19,6 +19,8 @@ A rebase of **Melt Kernel** ([Pzqqt](https://github.com/Pzqqt)) for the **marble
 ![SUSFS](https://img.shields.io/badge/SUSFS-integrated-success?style=flat-square)
 ![ROM](https://img.shields.io/badge/ROM-HyperOS%2FColorOS%2FOxygenOS-orange?style=flat-square)
 
+[![Telegram](https://img.shields.io/badge/Telegram-meltrebase-26A5E4?style=flat-square&logo=telegram&logoColor=white)](https://t.me/meltrebase)
+
 </div>
 
 ---
