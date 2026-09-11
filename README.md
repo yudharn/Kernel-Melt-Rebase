@@ -1,5 +1,7 @@
 <div align="center">
 
+![Kernel Melt Rebase](assets/social-preview.png)
+
 # Kernel Melt Rebase
 
 ### Custom GKI Kernel for the Xiaomi POCO F5 / Redmi Note 12 Turbo
