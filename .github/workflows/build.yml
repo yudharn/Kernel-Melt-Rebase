@@ -404,10 +404,47 @@ jobs:
             KSU_DIR=$(comm -13 <(echo "$KSU_DIRS_BEFORE") <(echo "$KSU_DIRS_AFTER") | head -n1 | sed 's:/$::')
 
             if [[ -n "$KSU_DIR" && -d "${KSU_DIR}/.git" ]]; then
-              KSU_MANAGER_VERSION=$(cd "$KSU_DIR" && git describe --tags --always 2>/dev/null || echo "unknown")
               KSU_MANAGER_COMMIT=$(cd "$KSU_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "")
               KSU_MANAGER_REPO_URL=$(cd "$KSU_DIR" && git remote get-url origin 2>/dev/null | sed 's/\.git$//')
               KSU_MANAGER_COMMIT_URL="${KSU_MANAGER_REPO_URL}/commit/${KSU_MANAGER_COMMIT}"
+
+              # Each fork computes its own version code in kernel/Kbuild (KSU_VERSION),
+              # this mirrors that formula so the release notes match what the manager
+              # app itself reports, e.g. ReSukiSU shows "v4.2.0-rc1 (35119)".
+              KSU_REV_COUNT=$(cd "$KSU_DIR" && git rev-list --count HEAD 2>/dev/null || echo "")
+              KSU_TAG=""
+              KSU_CODE=""
+
+              case "${{ matrix.ksu_type }}" in
+                "Official-KernelSU"|"KowSU")
+                  KSU_TAG=$(cd "$KSU_DIR" && git describe --tags --always 2>/dev/null || echo "")
+                  [[ -n "$KSU_REV_COUNT" ]] && KSU_CODE=$((30000 + KSU_REV_COUNT))
+                  ;;
+                "KernelSU-Next")
+                  KSU_TAG=$(cd "$KSU_DIR" && git describe --tags --abbrev=0 2>/dev/null || echo "")
+                  [[ -n "$KSU_REV_COUNT" ]] && KSU_CODE=$((30000 + KSU_REV_COUNT))
+                  ;;
+                "ReSukiSU")
+                  KSU_TAG=$(cd "$KSU_DIR" && git describe --abbrev=0 --tags 2>/dev/null || echo "")
+                  [[ -n "$KSU_REV_COUNT" ]] && KSU_CODE=$((30000 + KSU_REV_COUNT + 700))
+                  ;;
+                "SukiSUUltra")
+                  KSU_TAG=$(cd "$KSU_DIR" && git describe --tags --abbrev=0 2>/dev/null || echo "")
+                  [[ -n "$KSU_REV_COUNT" ]] && KSU_CODE=$((40000 + KSU_REV_COUNT - 2815))
+                  ;;
+                *)
+                  KSU_TAG=$(cd "$KSU_DIR" && git describe --tags --always 2>/dev/null || echo "")
+                  ;;
+              esac
+
+              if [[ -n "$KSU_TAG" && -n "$KSU_CODE" ]]; then
+                KSU_MANAGER_VERSION="${KSU_TAG} (${KSU_CODE})"
+              elif [[ -n "$KSU_TAG" ]]; then
+                KSU_MANAGER_VERSION="$KSU_TAG"
+              else
+                KSU_MANAGER_VERSION="unknown"
+              fi
+
               echo "==> ${{ matrix.ksu_type }}: detected source dir '${KSU_DIR}', version ${KSU_MANAGER_VERSION} (${KSU_MANAGER_COMMIT}) - ${KSU_MANAGER_COMMIT_URL}"
             else
               echo "==> Could not auto-detect the ${{ matrix.ksu_type }} source dir; KSU Manager version will show as unknown."
@@ -443,6 +480,11 @@ jobs:
             cp ./kernel_patches/50_add_susfs_in_gki-android12-5.10.patch ..
             cp ./kernel_patches/fs/* ../fs/
             cp ./kernel_patches/include/linux/* ../include/linux/
+
+            SUSFS_VERSION_TAG=$(sed -n 's/.*SUSFS_VERSION[[:space:]]*"\([^"]*\)".*/\1/p' kernel_patches/include/linux/susfs.h | head -n1)
+            echo "SUSFS_VERSION_TAG=${SUSFS_VERSION_TAG:-unknown}" >> $GITHUB_ENV
+            echo "==> SUSFS: detected version ${SUSFS_VERSION_TAG:-unknown} from susfs.h"
+
             cd ..
             patch -p1 < 50_add_susfs_in_gki-android12-5.10.patch
             echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/marble_defconfig
@@ -468,10 +510,15 @@ jobs:
               echo "NOMOUNT_COMMIT=${NOMOUNT_COMMIT}" >> $GITHUB_ENV
               echo "NOMOUNT_COMMIT_URL=${NOMOUNT_COMMIT_URL}" >> $GITHUB_ENV
               echo "==> NoMount: using commit ${NOMOUNT_COMMIT} on branch dev (${NOMOUNT_COMMIT_URL})"
+
+              NOMOUNT_VERSION_TAG=$(sed -n 's/^version=\(.*\)$/\1/p' NoMount/module/module.prop 2>/dev/null | head -n1)
+              echo "NOMOUNT_VERSION_TAG=${NOMOUNT_VERSION_TAG:-unknown}" >> $GITHUB_ENV
+              echo "==> NoMount: detected version ${NOMOUNT_VERSION_TAG:-unknown} from module.prop"
             else
               echo "::warning::Could not find NoMount/.git after setup.sh ran - NoMount commit will show as unknown in the release notes."
               echo "NOMOUNT_COMMIT=" >> $GITHUB_ENV
               echo "NOMOUNT_COMMIT_URL=" >> $GITHUB_ENV
+              echo "NOMOUNT_VERSION_TAG=" >> $GITHUB_ENV
             fi
 
             echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/marble_defconfig
@@ -642,9 +689,11 @@ jobs:
             --arg clang_version "${CLANG_VERSION}" \
             --arg susfs_commit "${SUSFS_COMMIT:-}" \
             --arg susfs_commit_url "${SUSFS_COMMIT_URL:-}" \
+            --arg susfs_version_tag "${SUSFS_VERSION_TAG:-}" \
             --arg nomount_commit "${NOMOUNT_COMMIT:-}" \
             --arg nomount_commit_url "${NOMOUNT_COMMIT_URL:-}" \
-            '{ksu_type:$ksu_type,kernel_name:$kernel_name,zip_name:$zip_name,ksu_manager_version:$ksu_manager_version,ksu_manager_commit:$ksu_manager_commit,ksu_manager_commit_url:$ksu_manager_commit_url,kernel_commit:$kernel_commit,kernel_commit_url:$kernel_commit_url,kernel_base_version:$kernel_base_version,clang_version:$clang_version,susfs_commit:$susfs_commit,susfs_commit_url:$susfs_commit_url,nomount_commit:$nomount_commit,nomount_commit_url:$nomount_commit_url}' \
+            --arg nomount_version_tag "${NOMOUNT_VERSION_TAG:-}" \
+            '{ksu_type:$ksu_type,kernel_name:$kernel_name,zip_name:$zip_name,ksu_manager_version:$ksu_manager_version,ksu_manager_commit:$ksu_manager_commit,ksu_manager_commit_url:$ksu_manager_commit_url,kernel_commit:$kernel_commit,kernel_commit_url:$kernel_commit_url,kernel_base_version:$kernel_base_version,clang_version:$clang_version,susfs_commit:$susfs_commit,susfs_commit_url:$susfs_commit_url,susfs_version_tag:$susfs_version_tag,nomount_commit:$nomount_commit,nomount_commit_url:$nomount_commit_url,nomount_version_tag:$nomount_version_tag}' \
             > "${GITHUB_WORKSPACE}/metadata.json"
 
       - name: Upload build artifact
@@ -710,8 +759,10 @@ jobs:
               CLANG_VERSION=$(jq -r '.clang_version' "$META")
               SUSFS_COMMIT=$(jq -r '.susfs_commit' "$META")
               SUSFS_COMMIT_URL=$(jq -r '.susfs_commit_url' "$META")
+              SUSFS_VERSION_TAG=$(jq -r '.susfs_version_tag' "$META")
               NOMOUNT_COMMIT=$(jq -r '.nomount_commit' "$META")
               NOMOUNT_COMMIT_URL=$(jq -r '.nomount_commit_url' "$META")
+              NOMOUNT_VERSION_TAG=$(jq -r '.nomount_version_tag' "$META")
               FIRST=false
             fi
 
@@ -741,7 +792,11 @@ jobs:
           fi
 
           if [[ "${{ inputs.susfs }}" == true ]]; then
-            susfs_checkbox="Supported (susfs4ksu@[${SUSFS_COMMIT}](${SUSFS_COMMIT_URL}))"
+            if [[ -n "$SUSFS_VERSION_TAG" && "$SUSFS_VERSION_TAG" != "unknown" && "$SUSFS_VERSION_TAG" != "null" ]]; then
+              susfs_checkbox="Supported (susfs4ksu ${SUSFS_VERSION_TAG}@[${SUSFS_COMMIT}](${SUSFS_COMMIT_URL}))"
+            else
+              susfs_checkbox="Supported (susfs4ksu@[${SUSFS_COMMIT}](${SUSFS_COMMIT_URL}))"
+            fi
           else
             susfs_checkbox="Unsupported"
           fi
@@ -772,7 +827,11 @@ jobs:
 
           if [[ "${{ inputs.nomount }}" == true ]]; then
             if [[ -n "$NOMOUNT_COMMIT" ]]; then
-              nomount_checkbox="Supported (nomount@[${NOMOUNT_COMMIT}](${NOMOUNT_COMMIT_URL}))"
+              if [[ -n "$NOMOUNT_VERSION_TAG" && "$NOMOUNT_VERSION_TAG" != "unknown" && "$NOMOUNT_VERSION_TAG" != "null" ]]; then
+                nomount_checkbox="Supported (nomount ${NOMOUNT_VERSION_TAG}@[${NOMOUNT_COMMIT}](${NOMOUNT_COMMIT_URL}))"
+              else
+                nomount_checkbox="Supported (nomount@[${NOMOUNT_COMMIT}](${NOMOUNT_COMMIT_URL}))"
+              fi
             else
               nomount_checkbox="Supported"
             fi
@@ -812,11 +871,3 @@ jobs:
 
            ---
           " "${ASSETS[@]}"
-
-
-
-
-
-
-
-          
