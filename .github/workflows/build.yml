@@ -669,7 +669,7 @@ jobs:
 
       - name: Make AnyKernel3
         run: |
-          ZIP_NAME="${KERNEL_BASE_VERSION}-${KERNEL_NAME}-${{ matrix.ksu_type }}"
+          ZIP_NAME="${KERNEL_NAME}-${{ matrix.ksu_type }}-${KERNEL_BASE_VERSION}"
 
           if [[ "${{ env.SUSFS }}" == true ]]; then
             ZIP_NAME="${ZIP_NAME}-SuSFS"
