@@ -458,9 +458,6 @@ jobs:
 
           if [[ "${{ inputs.nomount }}" == true ]]; then
             echo "::group::NoMount integration"
-            if [[ "${{ inputs.susfs }}" == true ]]; then
-              echo "::warning::susfs and nomount are both enabled - susfs's SUS_KSTAT patches fs/stat.c, which nomount's own VFS hooks may also touch. If anything below fails, try disabling one to isolate it."
-            fi
 
             curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/master/kernel/setup.sh | bash -s master
 
