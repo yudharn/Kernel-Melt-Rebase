@@ -892,7 +892,6 @@ jobs:
            ### 🧬 Full vs Core
 
            SuSFS, NoMount, and Re-Kernel (Netlink+eBPF) are enabled in all zip packages in this release. BBG and DroidSpaces are only available in the FULL build — check the 'Mode' column in the manager table below to see which zip is FULL or CORE.
-           
            | Mode | SuSFS | NoMount | BBG | Re-Kernel Netlink | Re-Kernel eBPF | DroidSpaces |
            |:---|:---:|:---:|:---:|:---:|:---:|:---:|
            | **FULL** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
