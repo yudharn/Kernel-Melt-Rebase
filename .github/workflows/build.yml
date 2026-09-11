@@ -51,7 +51,7 @@ on:
         description: "Custom ReSukiSU commit or tag. Leave empty to use the latest commit on main."
         required: false
         type: string
-        default: ""
+        default: "f1dd81dc96d7f3f6691e6ac8b50fba9ae8a2f17c"
 
       manager_sukisu_ultra:
         description: "Build SukiSUUltra"
@@ -83,7 +83,7 @@ on:
         description: "Custom susfs4ksu commit, Leave empty to use the latest commit on gki-android12-5.10."
         required: false
         type: string
-        default: ""
+        default: "721c76e73b1154baddce1b94e9693e56a4ab44f3"
 
       ccache_update:
         description: "Refresh ccache"
@@ -764,7 +764,6 @@ jobs:
 
           declare -A ROW_VERSION
           declare -A ROW_MODES
-          declare -A ROW_ZIPS
           ORDERED_TYPES=()
 
           while IFS= read -r META; do
@@ -805,10 +804,8 @@ jobs:
               ORDERED_TYPES+=("$KSU_TYPE")
               ROW_VERSION["$KSU_TYPE"]="$ksu_row_version"
               ROW_MODES["$KSU_TYPE"]="$BUILD_MODE_LEG"
-              ROW_ZIPS["$KSU_TYPE"]="$ZIP_NAME"
             else
               ROW_MODES["$KSU_TYPE"]="${ROW_MODES[$KSU_TYPE]},${BUILD_MODE_LEG}"
-              ROW_ZIPS["$KSU_TYPE"]="${ROW_ZIPS[$KSU_TYPE]}<br>${ZIP_NAME}"
             fi
 
             if [[ "$EBPF_DONE" == false && -f "${dir}rekernel.bpf.o" ]]; then
@@ -829,7 +826,7 @@ jobs:
               MODE_LABEL="$MODES_RAW"
             fi
             NOTES_ROWS="${NOTES_ROWS}
-           | ${KSU_TYPE} | ${MODE_LABEL} | ${ROW_VERSION[$KSU_TYPE]} | ${ROW_ZIPS[$KSU_TYPE]} |"
+           | ${KSU_TYPE} | ${MODE_LABEL} | ${ROW_VERSION[$KSU_TYPE]} |"
           done
 
           if [[ ${#ASSETS[@]} -eq 0 ]]; then
@@ -905,8 +902,8 @@ jobs:
 
            ### 💻 KSU Managers in this build
 
-           | Manager | Mode | Version | Zip |
-           |:---|:---:|:---|:---|${NOTES_ROWS}
+           | Manager | Mode | Version |
+           |:---|:---:|:---|${NOTES_ROWS}
 
            ---
           " "${ASSETS[@]}"
