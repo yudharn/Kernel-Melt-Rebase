@@ -51,8 +51,8 @@ Pzqqt deliberately leaves SUSFS integration and third-party root managers out of
 | Item | Detail |
 |---|---|
 | Device | Xiaomi POCO F5 / Redmi Note 12 Turbo |
-| Codename | `marble` (`marblein` for the Poco F5 variant) |
-| Chipset | Qualcomm Snapdragon 7 Gen 1 (SM7450) |
+| Codename | `marble` |
+| Chipset | Qualcomm Snapdragon 7+ Gen 2 (SM7475) |
 | Kernel base | Linux 5.10.x — GKI 2.0 (`android12-5.10`) |
 | Base source | [Pzqqt/android_kernel_xiaomi_marble](https://github.com/Pzqqt/android_kernel_xiaomi_marble) @ branch `melt-rebase` |
 | Toolchain | LLVM/Clang |
